@@ -1,0 +1,22 @@
+clc; clear;
+
+% Load the original fuzzy controller
+fis = readfis('dc_motor_fuzzy.fis');
+
+% Generate training samples with realistic wide range
+samples = 2000;
+e_vals = -2 + 4 * rand(samples, 1);       % error in [-2, 2]
+de_vals = -2 + 4 * rand(samples, 1);      % d_error in [-2, 2]
+
+% Preallocate dataset
+data = zeros(samples, 3);
+
+for i = 1:samples
+    % Evaluate fuzzy output and apply reasonable scaling
+    ctrl = evalfis([e_vals(i), de_vals(i)], fis) * 2.0;  % scaled, not too aggressive
+    data(i, :) = [e_vals(i), de_vals(i), ctrl];
+end
+
+% Save dataset
+save('anfis_training_data_strong.mat', 'data');
+
