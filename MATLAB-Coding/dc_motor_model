@@ -1,0 +1,124 @@
+% DC Motor Transfer Function Model
+
+clc; clear;
+
+% Motor parameters
+R = 1;      % Resistance (Ohm)
+L = 0.5;    % Inductance (H)
+J = 0.01;   % Inertia (kg.m^2)
+b = 0.1;    % Damping coefficient (N.m.s)
+K = 0.01;   % Motor constant
+
+% Define transfer function variable s
+s = tf('s');
+
+% Transfer Function: Omega(s)/V(s)
+P_motor = K / ((J*s + b)*(L*s + R) + K^2);
+
+% Display the transfer function
+disp('DC Motor Transfer Function:');
+P_motor
+
+% Simulate step response
+figure;
+step(P_motor)
+title('Open-Loop Step Response of DC Motor')
+ylabel('Speed (rad/s)')
+xlabel('Time (seconds)')
+grid on
+
+%% PID Controller Design
+
+% PID parameters (initial guess)
+Kp = 100;
+Ki = 200;
+Kd = 10;
+
+% Define the PID controller
+C_pid = pid(Kp, Ki, Kd);
+
+% Closed-loop system with unity feedback
+T_pid = feedback(C_pid * P_motor, 1);
+
+% Plot step response
+figure;
+step(T_pid)
+title('Closed-Loop Step Response with PID Controller')
+ylabel('Speed (rad/s)')
+xlabel('Time (seconds)')
+grid on
+
+% Get performance metrics
+info = stepinfo(T_pid);
+fprintf('\nPID Performance:\n');
+disp(info)
+
+
+%% Fuzzy Logic Controller Simulation
+
+clc; clear;
+
+% Load fuzzy system
+fis = readfis('dc_motor_fuzzy.fis');
+
+% Simulation Parameters
+dt = 0.01;
+T_total = 5;
+t = 0:dt:T_total;
+N = length(t);
+
+% DC Motor Parameters
+R = 1; L = 0.5; J = 0.01; b = 0.1; K = 0.01;
+s = tf('s');
+P_motor = K / ((J*s + b)*(L*s + R) + K^2);
+motor_ss = ss(P_motor);
+x = zeros(size(motor_ss.A,1), 1);
+
+% Initialize arrays
+omega = zeros(1, N); % speed
+u = zeros(1, N);     % control input
+error = zeros(1, N);
+d_error = zeros(1, N);
+prev_error = 0;
+
+% Setpoint
+setpoint = 1;
+
+for k = 1:N
+    error(k) = setpoint - omega(k);
+    d_error(k) = (error(k) - prev_error) / dt;
+    prev_error = error(k);
+
+    % Evaluate fuzzy output
+    u_norm = evalfis([error(k), d_error(k)], fis);
+    u(k) = max(min(u_norm * 18, 12), -12);
+
+    % Motor state update
+    dx = motor_ss.A * x + motor_ss.B * u(k);
+    x = x + dx * dt;
+    omega(k+1) = motor_ss.C * x + motor_ss.D * u(k);
+end
+
+omega = omega(1:N); % remove extra point
+
+info_fuzzy = stepinfo(omega, t, setpoint, ...
+   'RiseTimeLimits', [0.1 0.4], 'SettlingTimeThreshold', 0.1);
+mse_fuzzy = mean((setpoint - omega).^2);
+
+% Display results
+fprintf("=== Fuzzy Controller Performance ===\n");
+fprintf("Rise Time: %.3f s\n", info_fuzzy.RiseTime);
+fprintf("Settling Time: %.3f s\n", info_fuzzy.SettlingTime);
+fprintf("Overshoot: %.2f %%\n", info_fuzzy.Overshoot);
+fprintf("Steady-State Value: %.2f rad/s\n", omega(end));
+fprintf("MSE: %.5f\n", mse_fuzzy);
+
+% Plot
+figure;
+plot(t, omega, 'b', 'LineWidth', 1.5); hold on;
+yline(setpoint, 'r--', 'Setpoint');
+title('DC Motor Speed with Fuzzy Controller');
+xlabel('Time (s)'); ylabel('Motor Speed (rad/s)');
+legend('Motor Speed', 'Setpoint');
+grid on;
+
