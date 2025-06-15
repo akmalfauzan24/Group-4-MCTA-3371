@@ -1,0 +1,67 @@
+% ANFIS Controller Simulation
+
+clc; clear;
+
+% Load trained ANFIS FIS
+fis = readfis('anfis_fuzzy_strong.fis');
+
+% Simulation Parameters
+dt = 0.01;
+T_total = 5;
+t = 0:dt:T_total;
+N = length(t);
+
+% DC Motor Parameters
+R = 1; L = 0.5; J = 0.01; b = 0.1; K = 0.01;
+s = tf('s');
+P_motor = K / ((J*s + b)*(L*s + R) + K^2);
+motor_ss = ss(P_motor);
+x = zeros(size(motor_ss.A,1), 1);
+
+% Initialize arrays
+omega = zeros(1, N);
+u = zeros(1, N);
+error = zeros(1, N);
+d_error = zeros(1, N);
+prev_error = 0;
+
+% Setpoint
+setpoint = 1;
+
+for k = 1:N
+    error(k) = setpoint - omega(k);
+    d_error(k) = (error(k) - prev_error) / dt;
+    prev_error = error(k);
+
+    % Evaluate ANFIS output
+    ctrl = evalfis([error(k), d_error(k)], fis);
+    u(k) = max(min(ctrl * 30, 12), -12);  % Clamp to [-12V, +12V]
+
+    dx = motor_ss.A * x + motor_ss.B * u(k);
+    x = x + dx * dt;
+    omega(k+1) = motor_ss.C * x + motor_ss.D * u(k);
+end
+
+omega = omega(1:N); % trim extra point
+
+% Performance metrics
+info_anfis = stepinfo(omega, t, setpoint, ...
+    'RiseTimeLimits', [0.1 0.7], 'SettlingTimeThreshold', 0.1);
+mse_anfis = mean((setpoint - omega).^2);
+
+% Display results
+fprintf("=== ANFIS Controller Performance ===\n");
+fprintf("Rise Time: %.3f s\n", info_anfis.RiseTime);
+fprintf("Settling Time: %.3f s\n", info_anfis.SettlingTime);
+fprintf("Overshoot: %.2f %%\n", info_anfis.Overshoot);
+fprintf("Steady-State Value: %.2f rad/s\n", omega(end));
+fprintf("MSE: %.5f\n", mse_anfis);
+
+% Plot
+figure;
+plot(t, omega, 'b', 'LineWidth', 1.5); hold on;
+yline(setpoint, 'r--', 'Setpoint');
+title('DC Motor Speed with ANFIS Controller');
+xlabel('Time (s)'); ylabel('Motor Speed (rad/s)');
+legend('Motor Speed', 'Setpoint');
+grid on;
