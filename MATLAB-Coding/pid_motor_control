@@ -1,0 +1,45 @@
+clc; clear;
+
+% --- DC Motor Parameters ---
+R = 1; L = 0.5; J = 0.01; b = 0.1; K = 0.01;
+s = tf('s');
+P_motor = K / ((J*s + b)*(L*s + R) + K^2);
+motor_ss = ss(P_motor);
+
+% --- PID Controller Parameters ---
+Kp = 100;
+Ki = 200;
+Kd = 10;
+C_pid = pid(Kp, Ki, Kd);
+
+% --- Closed-loop system
+T_pid = feedback(C_pid * P_motor, 1);
+
+% --- Simulation
+dt = 0.01;
+T_total = 5;
+time = 0:dt:T_total;
+setpoint = 1;
+[y_pid, t_pid] = step(T_pid, time);
+omega_pid = y_pid * setpoint;  % Assume desired setpoint = 1 rad/s
+
+% --- Plot
+figure;
+plot(t_pid, omega_pid, 'r', 'LineWidth', 2); hold on;
+yline(setpoint, 'k--', 'Setpoint');
+xlabel('Time (s)'), ylabel('Motor Speed (rad/s)')
+title('PID Controller Response')
+legend('Motor Speed', 'Setpoint')
+grid on
+
+% --- Compute Performance Metrics
+info_pid = stepinfo(omega_pid, t_pid, setpoint, 'RiseTimeLimits', [0.1 0.9], 'SettlingTimeThreshold', 0.05);
+fprintf("=== PID Controller Performance ===\n");
+fprintf("Rise Time: %.3f s\n", info_pid.RiseTime);
+fprintf("Settling Time: %.3f s\n", info_pid.SettlingTime);
+fprintf("Overshoot: %.2f %%\n", info_pid.Overshoot);
+fprintf("Steady-State Value: %.2f rad/s\n", omega_pid(end));
+
+% --- MSE
+mse_pid = mean((setpoint - omega_pid).^2);
+fprintf("Mean Squared Error (MSE): %.5f\n", mse_pid);
