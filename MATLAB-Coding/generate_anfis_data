@@ -1,0 +1,18 @@
+clc; clear;
+
+% Load your FIS
+fis = readfis('dc_motor_fuzzy.fis');
+
+% Create training dataset
+samples = 1000;
+e_vals = -1 + 2 * rand(samples,1);         % Random error in [-1,1]
+de_vals = -1 + 2 * rand(samples,1);        % Random delta error
+
+data = zeros(samples, 3);
+for i = 1:samples
+    ctrl = evalfis([e_vals(i), de_vals(i)], fis);
+    data(i,:) = [e_vals(i), de_vals(i), ctrl];  % [input1, input2, output]
+end
+
+save('anfis_training_data.mat', 'data');
+
